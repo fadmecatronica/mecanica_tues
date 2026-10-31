@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Laboratorio Virtual · Mecánica, Elementos Mecánicos e Hidráulica</title>
+<style>
+:root{--bg:#070b14;--card:#0d1526;--ln:#1c2d4d;--tx:#dbe7ff;--mu:#8aa0c8;--c1:#00e5ff;--c2:#2d7bff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.6 system-ui,Segoe UI,sans-serif}
+a{color:var(--c1)}header.hero{position:relative;overflow:hidden;padding:56px 20px 40px;text-align:center;border-bottom:1px solid var(--ln)}
+#bg{position:absolute;inset:0;width:100%;height:100%;opacity:.35}
+.hero>*{position:relative}h1{margin:.2em 0;font-size:clamp(1.6rem,4.5vw,3rem);letter-spacing:.04em;background:linear-gradient(90deg,var(--c1),var(--c2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--mu);margin:0}main{max-width:1100px;margin:auto;padding:24px 16px 60px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--ln);border-radius:14px;padding:18px;cursor:pointer;color:inherit;text-align:left;font:inherit;transition:.25s}
+.card:hover,.card:focus-visible{border-color:var(--c1);box-shadow:0 0 22px #00e5ff33;transform:translateY(-3px);outline:none}
+.card .ic{font-size:2.2rem}.card h3{margin:.3em 0}.card p{color:var(--mu);margin:0;font-size:.92rem}
+.box{background:var(--card);border:1px solid var(--ln);border-radius:14px;padding:16px;margin:16px 0}
+.box h2{margin:.1em 0 .4em;font-size:1.1rem;color:var(--c1)}.f{font-family:Cambria,serif;font-size:1.1rem;background:#0a1020;padding:10px;border-left:3px solid var(--c2);overflow-x:auto}
+.sim{display:grid;grid-template-columns:2fr 1fr;gap:16px}@media(max-width:800px){.sim{grid-template-columns:1fr}}
+canvas{width:100%;background:#050912;border:1px solid var(--ln);border-radius:10px}
+label{display:block;font-size:.88rem;color:var(--mu);margin-top:8px}label b{color:var(--tx)}
+input[type=range]{width:100%;accent-color:var(--c1)}select{width:100%;background:#0a1020;color:var(--tx);border:1px solid var(--ln);border-radius:6px;padding:6px}
+button.b{background:var(--c2);color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer;margin:6px 6px 0 0;font:inherit}button.b:hover{background:var(--c1);color:#000}
+.res{display:flex;justify-content:space-between;border-bottom:1px solid var(--ln);padding:4px 0}.res span:last-child{color:var(--c1);font-weight:600}
+.ph{border:2px dashed var(--ln);border-radius:12px;padding:18px;text-align:center;color:var(--mu)}
+.ok{background:#0b5a3a!important}.no{background:#6a1b2a!important}.opt{display:block;width:100%;text-align:left;margin:6px 0}
+</style></head><body>
+<header class="hero"><canvas id="bg"></canvas>
+<p class="sub">Tecnicatura Universitaria en Energías Sustentables · UTN – Facultad Regional Córdoba</p>
+<h1>MECÁNICA, ELEMENTOS MECÁNICOS E HIDRÁULICA</h1>
+<p class="sub">Laboratorio virtual: explorá los fenómenos, modificá variables y observá los resultados en tiempo real.</p></header>
+<main id="app"></main>
+<script>
+/* ===== Utilidades ===== */
+const g9=9.81,$=s=>document.querySelector(s),fmt=(x,d=2)=>Number(x).toLocaleString('es-AR',{maximumFractionDigits:d});
+function axes(g,W,H,mx,my,xl,yl){g.strokeStyle='#1c2d4d';g.fillStyle='#8aa0c8';g.font='11px sans-serif';g.lineWidth=1;
+ for(let i=0;i<=4;i++){let x=40+(W-55)*i/4,y=H-30-(H-45)*i/4;g.beginPath();g.moveTo(x,10);g.lineTo(x,H-30);g.moveTo(40,y);g.lineTo(W-15,y);g.stroke();g.fillText(fmt(mx*i/4,0),x-8,H-16);g.fillText(fmt(my*i/4,0),4,y+4)}
+ g.fillText(xl,W/2-20,H-3);g.fillText(yl,4,10)}
+function curve(g,W,H,f,mx,my,cx){g.strokeStyle='#00e5ff';g.lineWidth=2;g.beginPath();
+ for(let i=0;i<=200;i++){let x=mx*i/200,X=40+(W-55)*x/mx,Y=H-30-(H-45)*Math.min(f(x)/my,1);i?g.lineTo(X,Y):g.moveTo(X,Y)}g.stroke();
+ if(cx!=null){let X=40+(W-55)*cx/mx,Y=H-30-(H-45)*Math.min(f(cx)/my,1);g.fillStyle='#ff8a00';g.beginPath();g.arc(X,Y,6,0,7);g.fill()}}
+function spring(g,x0,x1,y,n=10,a=14){g.strokeStyle='#00e5ff';g.lineWidth=2;g.beginPath();g.moveTo(x0,y);const s=(x1-x0)/(n+1);
+ for(let i=1;i<=n;i++)g.lineTo(x0+s*(i+.0)-s/2+s/2,y+(i%2?-a:a));g.lineTo(x1,y);g.stroke()}
+const T=(g,t,x,y,c='#dbe7ff')=>{g.fillStyle=c;g.font='13px sans-serif';g.fillText(t,x,y)};
+
+/* ===== Datos de módulos =====
+ in: [id,etiqueta,min,max,valor,paso,unidad] ó [id,etiqueta,[opciones],índice]
+ sim(v,g,W,H,t) dibuja y devuelve resultados [[nombre,valor,unidad]] */
+const MT=[['Acero 1020',205,350,7850],['Aluminio 6061-T6',69,275,2700],['Nylon PA66',3,70,1140],['PEEK',3.6,100,1300],['Fundición gris',110,200,7200]];
+const VG=[32,46,68,100],FL=[[1000,4180],[1070,3300],[870,1900]],PR=[.8,.85,.6,1],RH=[1000,1025,870,13600];
+const M=[
+{n:'Propiedades mecánicas de los materiales',ic:'📈',d:'Ensayo de tracción, curva σ-ε, módulo E y límite elástico.',
+ th:'Un ensayo de tracción estira una probeta normalizada y registra fuerza y alargamiento. La curva tensión-deformación muestra la zona elástica (reversible, pendiente = módulo de elasticidad E), el límite elástico, la resistencia máxima y la estricción previa a la rotura.',
+ f:'σ = F/A₀ · ε = ΔL/L₀ · σ = E·ε (zona elástica)',ex:'Barra de 200 mm² con F = 50 kN: σ = 50 000/200 = 250 MPa. Con acero (E = 200 GPa): ε = 250/200 000 = 0,00125 = 0,125 %.',
+ gl:'Fluencia: inicio de la deformación plástica. Estricción: reducción localizada de sección. Ductilidad: capacidad de deformarse antes de romper.',
+ q:['¿Qué representa la pendiente de la zona elástica?',['Resistencia máxima','Módulo de elasticidad','Ductilidad'],1],
+ in:[['E','Módulo E',50,250,200,1,'GPa'],['sy','Límite elástico σy',100,900,350,10,'MPa'],['su','Resistencia máx. σu',200,1200,500,10,'MPa'],['e','Deformación ε',0,25,0,.1,'%']],
+ sim(v,g,W,H){const E=v.E*1000,ey=v.sy/E,su=Math.max(v.su,v.sy+10),eu=.15,ef=.2,e=v.e/100;
+  const s=x=>x>ef?0:x<=ey?E*x:x<=eu?v.sy+(su-v.sy)*(1-((eu-x)/(eu-ey))**2):su*(1-.25*(x-eu)/(ef-eu));
+  axes(g,W,H,25,1200,'ε (%)','σ (MPa)');curve(g,W,H,x=>s(x/100),25,1200,v.e);
+  return[['Tensión σ',s(e),'MPa'],['Deformación ε',v.e,'%'],['Zona',e>ef?'Rotura':e<=ey?'Elástica':e<=eu?'Plástica':'Estricción',''],['ε de fluencia',ey*100,'%']]}},
+{n:'Materiales plásticos y metálicos',ic:'🔩',d:'Compará materiales y verificá el factor de seguridad.',
+ th:'Los metales suelen ofrecer mayor rigidez y resistencia; los plásticos, menor densidad, aislación y resistencia química, pero más deformación y sensibilidad térmica. La selección equilibra tensión admisible, rigidez, masa, costo y ambiente de servicio.',
+ f:'σ = F/A · ΔL = F·L/(A·E) · FS = σy/σ',ex:'Nylon PA66 con σ = 100 MPa supera σy = 70 MPa (FS < 1): hay que aumentar la sección o cambiar de material.',
+ gl:'FS: factor de seguridad. Termoplástico: se ablanda con el calor. Aleación: mezcla metálica.',
+ q:['¿Qué indica FS < 1?',['Pieza segura','Se supera el límite elástico','Pieza más liviana'],1],
+ in:[['m','Material',MT.map(m=>m[0]),0],['F','Fuerza F',1,100,20,1,'kN'],['A','Sección A',20,1000,200,10,'mm²'],['L','Longitud L',.1,3,1,.1,'m']],
+ sim(v,g,W,H){const m=MT[v.m],s=v.F*1000/v.A,dl=s*v.L/m[1],fs=m[2]/s,st=s/(m[1]*1000),len=300*(1+Math.min(st*25,.6));
+  g.fillStyle='#3a4a6b';g.fillRect(30,60,20,120);g.fillStyle=fs<1?'#ff3355':'#00e5ff';g.fillRect(50,100,len,40);
+  g.fillStyle='#ff8a00';g.fillRect(50+len,110,40,20);T(g,'F →',50+len+5,125,'#000');T(g,m[0]+' (deformación exagerada)',60,40);
+  return[['Tensión σ',s,'MPa'],['Alargamiento ΔL',dl,'mm'],['Factor de seguridad',fs,''],['Masa',m[3]*v.A*1e-6*v.L,'kg'],['Estado',fs<1?'FALLA':fs<2?'Justo':'Seguro','']]}},
+{n:'Lubricantes y refrigerantes',ic:'🛢️',d:'Viscosidad vs. temperatura y calor evacuado por un refrigerante.',
+ th:'La viscosidad del lubricante cae al subir la temperatura; el índice de viscosidad (VI) mide cuánto. Un refrigerante evacúa calor según su caudal másico y su calor específico.',
+ f:'ν(T) ≈ ν₄₀·e^(k·(40−T)) (modelo simplificado) · Q = ṁ·cp·ΔT',ex:'Agua, 20 L/min, ΔT = 10 K: ṁ = 0,333 kg/s; Q = 0,333·4180·10 ≈ 13,9 kW.',
+ gl:'ISO VG: grado de viscosidad a 40 °C. cp: calor específico. Glicol: anticongelante.',
+ q:['Un VI alto significa…',['Mayor variación con T','Menor variación con T','Mayor densidad'],1],
+ in:[['g','Grado ISO',VG.map(x=>'VG '+x),1],['vi','Índice de viscosidad',['VI 100','VI 150'],0],['T','Temperatura',0,150,40,1,'°C'],['fl','Refrigerante',['Agua','Glicol 50 %','Aceite térmico'],0],['q','Caudal',1,100,20,1,'L/min'],['dT','ΔT',1,40,10,1,'K']],
+ sim(v,g,W,H){const k=v.vi?.0278:.032,n=t=>VG[v.g]*Math.exp(k*(40-t)),f=FL[v.fl];
+  axes(g,W,H,150,400,'T (°C)','ν (mm²/s)');curve(g,W,H,n,150,400,v.T);
+  return[['Viscosidad ν(T)',n(v.T),'mm²/s'],['Calor evacuado Q',f[0]*v.q/60000*f[1]*v.dT/1000,'kW'],['Caudal másico ṁ',f[0]*v.q/60000,'kg/s']]}},
+{n:'Soldaduras',ic:'🔥',d:'Aporte térmico, cordón y zona afectada por el calor.',
+ th:'La soldadura por fusión une piezas con un aporte de calor localizado. El aporte térmico por unidad de longitud condiciona el tamaño del cordón, la zona afectada por el calor (ZAT) y la velocidad de enfriamiento. Simulación conceptual.',
+ f:'HI = η·V·I / (1000·v)  [kJ/mm]',ex:'GMAW: η = 0,85; 24 V; 200 A; 4 mm/s → HI = 0,85·24·200/(1000·4) ≈ 1,02 kJ/mm.',
+ gl:'ZAT: zona afectada por el calor. η: rendimiento térmico del arco. Cordón: metal depositado.',
+ q:['Al aumentar la velocidad de avance, el aporte térmico…',['Aumenta','Disminuye','No cambia'],1],
+ in:[['p','Proceso',['SMAW (electrodo)','GMAW (MIG/MAG)','GTAW (TIG)','SAW (arco sumergido)'],1],['V','Tensión V',10,35,24,1,'V'],['I','Corriente I',50,300,200,5,'A'],['s','Velocidad de avance',2,15,4,.5,'mm/s'],['t','Espesor',3,25,8,1,'mm']],
+ sim(v,g,W,H){const hi=PR[v.p]*v.V*v.I/(1000*v.s),w=4+6*hi,z=w+2*(1+3*hi),sc=6,c=W/2,t=v.t*sc;
+  g.fillStyle='#3a4a6b';g.fillRect(20,60,W-40,t);
+  const poly=(a,b,col)=>{g.fillStyle=col;g.beginPath();g.moveTo(c-a/2,60);g.lineTo(c+a/2,60);g.lineTo(c+b/2,60+t);g.lineTo(c-b/2,60+t);g.fill()};
+  poly(Math.min(z*sc,W-40),z*sc*.5,'#ff8a00');poly(w*sc,w*sc*.4,'#00e5ff');T(g,'Zona fundida',c-35,50,'#00e5ff');T(g,'ZAT',c+w*sc/2+8,70,'#ff8a00');
+  return[['Aporte térmico HI',hi,'kJ/mm'],['Ancho de cordón',w,'mm'],['Ancho ZAT',z,'mm'],['Enfriamiento',hi<.8?'Rápido (riesgo de temple)':hi<2?'Moderado':'Lento (grano grueso)','']]}},
+{n:'Resortes',ic:'🌀',d:'Ley de Hooke, energía elástica, serie y paralelo.',
+ th:'Un resorte helicoidal ideal cumple la ley de Hooke: la fuerza es proporcional a la deformación. En paralelo las constantes se suman; en serie se suman las flexibilidades (inversas).',
+ f:'F = k·x · Eₚ = ½·k·x² · paralelo: k = k₁+k₂ · serie: 1/k = 1/k₁+1/k₂',ex:'k₁ = k₂ = 1000 N/m en serie: k = 500 N/m. Con F = 50 N: x = 0,1 m y Eₚ = 2,5 J.',
+ gl:'Constante elástica k: rigidez (N/m). Energía elástica: trabajo almacenado. Flexibilidad: 1/k.',
+ q:['Dos resortes iguales en paralelo dan una constante…',['Mitad','Igual','Doble'],2],
+ in:[['c','Asociación',['Serie','Paralelo'],0],['k1','Constante k₁',500,5000,1000,50,'N/m'],['k2','Constante k₂',500,5000,2000,50,'N/m'],['F','Fuerza F',0,100,50,1,'N']],
+ sim(v,g,W,H,t){const par=v.c==1,k=par?v.k1+v.k2:v.k1*v.k2/(v.k1+v.k2),x=v.F/k,P=1/.4*100;g.fillStyle='#3a4a6b';g.fillRect(20,40,10,200);
+  if(par){const e=Math.min(x*P,150);[90,190].forEach(y=>spring(g,30,150+e,y));g.fillStyle='#ff8a00';g.fillRect(150+e,60,30,160)}
+  else{const e1=Math.min(v.F/v.k1*P,150),e2=Math.min(v.F/v.k2*P,150);spring(g,30,150+e1,140);spring(g,150+e1,270+e1+e2,140);g.fillStyle='#ff8a00';g.fillRect(270+e1+e2,110,30,60)}
+  return[['k equivalente',k,'N/m'],['Deformación x',x*1000,'mm'],['Energía Eₚ',.5*v.F*x,'J']]}},
+{n:'Hidrostática',ic:'💧',d:'Presión con la profundidad, Pascal y Arquímedes.',
+ th:'En un fluido en reposo la presión aumenta linealmente con la profundidad. Pascal: la presión aplicada se transmite íntegra. Arquímedes: el empuje iguala al peso del fluido desalojado.',
+ f:'p = p₀ + ρ·g·h · E = ρ·g·V · F₂ = F₁·A₂/A₁',ex:'Agua a 10 m: p manométrica = 1000·9,81·10 = 98,1 kPa (≈ 1 bar).',
+ gl:'Presión manométrica: respecto a la atmosférica. Empuje: fuerza vertical del fluido sobre un cuerpo sumergido.',
+ q:['Un cuerpo flota si su densidad es…',['Mayor que la del fluido','Menor que la del fluido','Cero'],1],
+ in:[['r','Fluido',['Agua','Agua de mar','Aceite','Mercurio'],0],['h','Profundidad h',0,50,10,1,'m'],['Vb','Volumen del cuerpo',1,100,20,1,'L'],['rb','Densidad del cuerpo',200,8000,700,50,'kg/m³'],['A1','Área A₁ (Pascal)',1,50,5,1,'cm²'],['A2','Área A₂ (Pascal)',5,500,100,5,'cm²'],['F1','Fuerza F₁',10,1000,100,10,'N']],
+ sim(v,g,W,H){const r=RH[v.r],f=Math.min(1,v.rb/r),y=30+v.h/50*250;g.fillStyle='#0b3d6b';g.fillRect(40,30,260,270);
+  g.strokeStyle='#ff8a00';g.beginPath();g.moveTo(40,y);g.lineTo(300,y);g.stroke();T(g,'h = '+v.h+' m',310,y+4,'#ff8a00');
+  const by=v.rb<r?30+60*f-60:240;g.fillStyle='#c9a24a';g.fillRect(130,by,70,60);T(g,v.rb<r?'flota':'se hunde',135,by+35,'#000');
+  return[['Presión manométrica',r*g9*v.h/1000,'kPa'],['Presión absoluta',r*g9*v.h/1000+101.325,'kPa'],['Empuje (sumergido)',r*g9*v.Vb/1000,'N'],['Peso del cuerpo',v.rb*g9*v.Vb/1000,'N'],['Fracción sumergida',f*100,'%'],['Fuerza F₂ (Pascal)',v.F1*v.A2/v.A1,'N']]}},
+{n:'Hidroneumática',ic:'⚙️',d:'Cilindro hidráulico: fuerza, velocidad y potencia.',
+ th:'La hidroneumática combina fluido incompresible (potencia y fuerza) con aire comprimido (velocidad y limpieza). Un cilindro transforma presión y caudal en fuerza y velocidad; las válvulas direccionales gobiernan el sentido del movimiento.',
+ f:'F = p·A · v = Q/A · P = p·Q',ex:'Ø63 mm a 100 bar: A = 3,12·10⁻³ m² → F ≈ 31,2 kN.',
+ gl:'Vástago: barra del pistón. Válvula 4/3: cuatro vías, tres posiciones. Actuador: convierte energía del fluido en movimiento.',
+ q:['Si se duplica el caudal, la velocidad del vástago…',['Se duplica','Se reduce a la mitad','No cambia'],0],
+ in:[['p','Presión p',1,250,100,1,'bar'],['D','Diámetro émbolo D',20,160,63,1,'mm'],['d','Diámetro vástago d',10,100,28,1,'mm'],['Q','Caudal Q',1,100,20,1,'L/min']],
+ sim(v,g,W,H,t){const d=Math.min(v.d,v.D-5),A=Math.PI*(v.D/1000)**2/4,Ar=Math.PI*((v.D/1000)**2-(d/1000)**2)/4,q=v.Q/60000,ve=q/A,
+  ph=(t*(.15+Math.min(ve*3,1)))%2,pos=ph<1?ph:2-ph,px=70+pos*300;
+  g.fillStyle='#0b3d6b';g.fillRect(60,90,pos<1?px-60:310,60);g.strokeStyle='#00e5ff';g.lineWidth=3;g.strokeRect(60,90,320,60);
+  g.fillStyle='#dbe7ff';g.fillRect(px,92,10,56);g.fillRect(px+10,112,420-px+30,16);T(g,'Bomba → válvula 4/3 → cilindro',60,60);T(g,pos<1?'avance':'retroceso',60,190,'#ff8a00');
+  return[['Fuerza de avance',v.p*1e5*A/1000,'kN'],['Fuerza de retroceso',v.p*1e5*Ar/1000,'kN'],['Velocidad de avance',ve,'m/s'],['Velocidad de retroceso',q/Ar,'m/s'],['Potencia hidráulica',v.p*v.Q/600,'kW']]}}
+];
+
+/* ===== Interfaz ===== */
+let cur=null,t0=performance.now();
+function home(){cur=null;$('#app').innerHTML='<h2>Módulos</h2><div class="grid">'+M.map((m,i)=>`<button class="card" onclick="location.hash='m${i}'"><div class="ic">${m.ic}</div><small>Módulo ${i+1}</small><h3>${m.n}</h3><p>${m.d}</p></button>`).join('')+'</div>'}
+function mod(i){const m=M[i],v={},ctrl=m.in.map(x=>{v[x[0]]=Array.isArray(x[2])?x[3]:x[4];
+  return Array.isArray(x[2])?`<label>${x[1]}<select data-k="${x[0]}">${x[2].map((o,j)=>`<option value="${j}"${j==x[3]?' selected':''}>${o}</option>`).join('')}</select></label>`
+  :`<label>${x[1]}: <b id="o_${x[0]}">${x[4]}</b> ${x[6]}<input type="range" data-k="${x[0]}" min="${x[2]}" max="${x[3]}" step="${x[5]}" value="${x[4]}"></label>`}).join('');
+ $('#app').innerHTML=`<a href="#">← Volver al menú</a><h2>${m.ic} ${i+1}. ${m.n}</h2>
+ <div class="box"><h2>Teoría</h2><p>${m.th}</p><div class="f">${m.f}</div></div>
+ <div class="box"><h2>Simulador (unidades SI)</h2><div class="sim"><canvas id="cv" width="640" height="320" role="img" aria-label="Simulación de ${m.n}"></canvas>
+ <div><div id="ctrl">${ctrl}</div><button class="b" id="rst">Restablecer</button><div id="res" aria-live="polite" style="margin-top:10px"></div></div></div></div>
+ <div class="box"><h2>Ejercicio resuelto</h2><p>${m.ex}</p></div><div class="box"><h2>Glosario</h2><p>${m.gl}</p></div>
+ <div class="box"><h2>Autoevaluación</h2><p>${m.q[0]}</p>${m.q[1].map((o,j)=>`<button class="b opt" data-j="${j}">${o}</button>`).join('')}</div>
+ <div class="box"><h2>Material y bibliografía</h2><div class="ph">Espacio reservado para fotografías, apuntes y bibliografía (agregar en /img y /docs).</div></div>`;
+ $('#ctrl').oninput=e=>{const k=e.target.dataset.k;if(!k)return;v[k]=+e.target.value;const o=$('#o_'+k);if(o)o.textContent=e.target.value};
+ $('#rst').onclick=()=>mod(i);
+ document.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{b.classList.add(+b.dataset.j==m.q[2]?'ok':'no')});
+ cur={m,v}}
+function route(){const h=location.hash.slice(2);window.scrollTo(0,0);h!==''&&M[+h]?mod(+h):home()}
+addEventListener('hashchange',route);route();
+function loop(now){const t=(now-t0)/1000;
+ if(cur){const c=$('#cv'),g=c.getContext('2d');g.clearRect(0,0,c.width,c.height);const r=cur.m.sim(cur.v,g,c.width,c.height,t);
+  $('#res').innerHTML=r.map(x=>`<div class="res"><span>${x[0]}</span><span>${typeof x[1]=='number'?fmt(x[1],3):x[1]} ${x[2]}</span></div>`).join('')}
+ bgd(t);requestAnimationFrame(loop)}
+/* Engranajes animados del encabezado */
+const bc=$('#bg'),bg=bc.getContext('2d');
+function gear(x,y,r,n,a){bg.beginPath();for(let i=0;i<n*2;i++){const ang=a+i*Math.PI/n,rr=i%2?r*.85:r;bg.lineTo(x+rr*Math.cos(ang),y+rr*Math.sin(ang))}bg.closePath();bg.stroke();bg.beginPath();bg.arc(x,y,r*.3,0,7);bg.stroke()}
+function bgd(t){bc.width=bc.clientWidth;bc.height=bc.clientHeight;bg.strokeStyle='#00e5ff';bg.lineWidth=2;
+ gear(bc.width*.12,bc.height*.5,70,14,t*.4);gear(bc.width*.12+127,bc.height*.5-30,50,10,-t*.56-.15);gear(bc.width*.88,bc.height*.45,90,18,-t*.3)}
+requestAnimationFrame(loop);
+</script></body></html>
